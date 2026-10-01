@@ -1,0 +1,22 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const nodes=new Map();function node(id){if(!nodes.has(id))nodes.set(id,{id,innerHTML:'',textContent:'',value:0,classList:{add(){},remove(){},toggle(){return false}},setAttribute(){},addEventListener(k,f){this[k]=f},focus(){},querySelector(){return{textContent:'Course'}}});return nodes.get(id);}
+const memory={};const context={console,window:{addEventListener(){},scrollTo(){},print(){}},document:{getElementById:node,querySelectorAll(){return[]}},localStorage:{getItem:k=>memory[k],setItem:(k,v)=>memory[k]=v},location:{hash:'#home'},history:{replaceState(a,b,c){context.location.hash=c}},setTimeout(){return 1},clearTimeout(){},confirm:()=>true,Blob,URL,FormData:class{constructor(x){this.x=x}get(k){return this.x[k]}}};vm.createContext(context);vm.runInContext(fs.readFileSync('dist/course-data.js','utf8'),context);vm.runInContext(fs.readFileSync('dist/extension-data.js','utf8'),context);vm.runInContext(fs.readFileSync('dist/extension-ui.js','utf8'),context);vm.runInContext(fs.readFileSync('dist/app.js','utf8'),context);
+assert.equal(vm.runInContext('lessons.length',context),53);
+assert.equal(vm.runInContext('modules.reduce((s,m)=>s+m.quiz.length,0)',context),39);
+vm.runInContext("lesson('3')",context);node('response').input({target:{value:'My course interest is computing.'}});node('complete').onclick();assert.equal(vm.runInContext('stats().done',context),1);assert(memory['college-course-v1'].includes('computing'));
+vm.runInContext("quiz('1')",context);node('quiz-form').onsubmit({preventDefault(){},target:{q0:'1',q1:'2',q2:'0'}});assert.equal(vm.runInContext('score(modules[0])',context),3);assert.equal(vm.runInContext('stats().passed',context),1);
+node('quiz-form').onsubmit({preventDefault(){},target:{q0:'0',q1:'0',q2:'2'}});assert.equal(vm.runInContext('score(modules[0])',context),0);assert(node('quiz-result').innerHTML.includes('Keep practising'));
+vm.runInContext('workbook()',context);assert(node('main').innerHTML.includes('My course interest is computing.'));
+vm.runInContext("state.notes['3']='<script>unsafe</script>';workbook()",context);assert(!node('main').innerHTML.includes('<script>unsafe</script>'));
+for(const m of context.window.COURSE.modules){for(const l of m.lessons){assert(l.title&&l.html&&l.activity);vm.runInContext(`lesson('${l.id}')`,context);assert(node('main').innerHTML.includes('My response and next action'));}for(const q of m.quiz)assert(q.options[q.answer]&&q.why);}
+vm.runInContext("lesson('missing')",context);assert(node('main').innerHTML.includes('Lesson not found'));
+vm.runInContext('workbook()',context);node('clear').onclick();assert.equal(vm.runInContext('stats().done',context),0);assert.equal(vm.runInContext('Object.keys(state.notes).length',context),0);
+console.log('Passed: 53 lesson renders, 39 question keys, notes persistence, completion toggle, quiz success/retry, workbook escaping, reset and invalid route.');console.log('Full browser visual QA and optional WebMCP validation unavailable in this static preview environment.');
+
+for(const route of ['pathways','roadmap','career-resources','resources','support']){context.location.hash='#'+route;vm.runInContext('render()',context);assert(node('main').innerHTML.length>500);assert(!node('main').innerHTML.includes('undefined'));}
+const course=context.window.COURSE;const ids=course.modules.flatMap(m=>m.lessons.map(l=>l.id));assert.equal(new Set(ids).size,53);
+for(const m of course.modules){vm.runInContext(`quiz('${m.id}')`,context);const target=Object.fromEntries(m.quiz.map((q,i)=>['q'+i,String(q.answer)]));node('quiz-form').onsubmit({preventDefault(){},target});assert.equal(vm.runInContext(`score(modules[${m.id-1}])`,context),3);}
+vm.runInContext('state.done=lessons.map(l=>l.id);overview();nav()',context);assert(node('main').innerHTML.includes('Course complete'));assert.equal(node('progress').max,66);assert.equal(node('progress-label').textContent,'100%');assert(node('main').innerHTML.includes('all 53 lessons'));
+for(const t of context.window.CAREER_TOPICS)assert(fs.existsSync('dist/'+t.file));assert.equal(context.window.CAREER_TOPICS.length,38);
+for(const filename of ['dist/extension-ui.js','dist/app.js']){const content=fs.readFileSync(filename,'utf8');for(const match of content.matchAll(/href="#lesson\/([^$"}]+)"/g))assert(ids.includes(match[1]),'Unknown lesson '+match[1]);}
+console.log('Passed: new routes, unique IDs, all 13 quiz passes, dynamic completion totals and 38 source PDF paths.');
